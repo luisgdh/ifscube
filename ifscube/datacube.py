@@ -62,6 +62,7 @@ class Cube:
         self.signal = None
         self.spatial_mask = None
         self.spec_indices = None
+        self.stellar = None
         self.variance = None
 
         if len(args) > 0:
@@ -1505,15 +1506,15 @@ class Cube:
         m = self.flags.astype('bool')
 
         self.data = cubetools.rebin(self.data, xbin, ybin, combine=combine, mask=m)
+        if self.stellar is not None:
+            self.stellar = cubetools.rebin(self.stellar, xbin, ybin, combine=combine, mask=m)
         self.flags = (cubetools.rebin(self.flags, xbin, ybin, combine='sum') == xbin * ybin).astype('int')
 
-        if hasattr('self', 'noise_cube'):
-            self.noise_cube = np.sqrt(cubetools.rebin(np.square(self.noise_cube), xbin, ybin, combine='sum', mask=m))
-
+        if self.variance is not None:
+            self.variance = cubetools.rebin(np.square(self.variance), xbin, ybin, combine='sum', mask=m)
             if combine == 'mean':
-                self.noise_cube /= self.ncubes
+                self.variance /= (xbin * ybin)
 
-            self.variance = np.square(self.noise_cube)
         self.spatial_mask = np.zeros(self.data.shape[1:], dtype=bool)
         self._set_spec_indices()
 

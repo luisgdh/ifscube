@@ -62,6 +62,7 @@ class Cube:
         self.signal = None
         self.spatial_mask = None
         self.spec_indices = None
+        self.stellar = None
         self.variance = None
 
         if len(args) > 0:
@@ -515,8 +516,8 @@ class Cube:
                 try:
                     cont = spectools.continuum(wl, s, **continuum_options)
                     if v is not None:
-                        for l, m in v[v[:, 2] == k, :2]:
-                            c[:, l, m] = cont[1]
+                        for n, m in v[v[:, 2] == k, :2]:
+                            c[:, n, m] = cont[1]
                     else:
                         c[:, i, j] = cont[1]
                 except TypeError:
@@ -687,15 +688,13 @@ class Cube:
         if y0 is None:
             y0 = int(self.spec_indices[:, 0].mean())
 
-        sci, npix_sci = cubetools.aperture_spectrum(
-            self.data, x0=x0, y0=y0, radius=radius, combine='sum')
-        var, npix_var = cubetools.aperture_spectrum(
-            self.variance, x0=x0, y0=y0, radius=radius, combine='sum')
+        sci, npix_sci = cubetools.aperture_spectrum(self.data, x0=x0, y0=y0, radius=radius, combine='sum')
+        var, npix_var = cubetools.aperture_spectrum(self.variance, x0=x0, y0=y0, radius=radius, combine='sum')
         if np.all(self.variance == 1.0):
             var = self.variance[:, 0, 0]
         ste, npix_ste = cubetools.aperture_spectrum(self.stellar, x0=x0, y0=y0, radius=radius, combine='sum')
-        fla, npix_fla = cubetools.aperture_spectrum(
-            (self.flags.astype('bool')).astype('float64'), x0=x0, y0=y0, radius=radius, combine='mean')
+        fla, npix_fla = cubetools.aperture_spectrum((self.flags.astype('bool')).astype('float64'), x0=x0, y0=y0,
+                                                    radius=radius, combine='mean')
 
         # NOTE: This only makes sense when the flags are only ones
         # and zeros, that is why the flag combination has to ensure
@@ -743,37 +742,26 @@ class Cube:
             fig = plt.figure(1)
             ax = fig.add_subplot(111)
 
-        if hasattr(x, '__iter__') and hasattr(y, '__iter__'):
-            s = np.average(np.average(self.data[:, y[0]:y[1], x[0]:x[1]], 1), 1)
-        elif hasattr(x, '__iter__') and not hasattr(y, '__iter__'):
-            s = np.average(self.data[:, y, x[0]:x[1]], 1)
-        elif not hasattr(x, '__iter__') and hasattr(y, '__iter__'):
-            s = np.average(self.data[:, y[0]:y[1], x], 1)
-        else:
-            s = self.data[:, y, x]
+        def deal_with_ranges(x_coordinates, y_coordinates, data):
+            if hasattr(x_coordinates, '__iter__') and hasattr(y_coordinates, '__iter__'):
+                one_d = np.average(
+                    np.average(data[:, y_coordinates[0]:y_coordinates[1], x_coordinates[0]:x_coordinates[1]], 1), 1)
+            elif hasattr(x_coordinates, '__iter__') and not hasattr(y_coordinates, '__iter__'):
+                one_d = np.average(data[:, y_coordinates, x_coordinates[0]:x_coordinates[1]], 1)
+            elif not hasattr(x_coordinates, '__iter__') and hasattr(y_coordinates, '__iter__'):
+                one_d = np.average(data[:, y_coordinates[0]:y_coordinates[1], x_coordinates], 1)
+            else:
+                one_d = data[:, y_coordinates, x_coordinates]
+            return one_d
 
-        if hasattr(x, '__iter__') and hasattr(y, '__iter__'):
-            syn = np.average(np.average(self.stellar[:, y[0]:y[1], x[0]:x[1]], 1), 1)
-        elif hasattr(x, '__iter__') and not hasattr(y, '__iter__'):
-            syn = np.average(self.stellar[:, y, x[0]:x[1]], 1)
-        elif not hasattr(x, '__iter__') and hasattr(y, '__iter__'):
-            syn = np.average(self.stellar[:, y[0]:y[1], x], 1)
-        else:
-            syn = self.stellar[:, y, x]
+        s = deal_with_ranges(x, y, self.data)
+        syn = deal_with_ranges(x, y, self.stellar)
 
         ax.plot(self.rest_wavelength, s)
         ax.plot(self.rest_wavelength, syn)
 
         if show_noise and (self.noise_cube is not None):
-
-            if hasattr(x, '__iter__') and hasattr(y, '__iter__'):
-                n = np.average(np.average(self.noise_cube[:, y[0]:y[1], x[0]:x[1]], 1), 1)
-            elif hasattr(x, '__iter__') and not hasattr(y, '__iter__'):
-                n = np.average(self.noise_cube[:, y, x[0]:x[1]], 1)
-            elif not hasattr(x, '__iter__') and hasattr(y, '__iter__'):
-                n = np.average(self.noise_cube[:, y[0]:y[1], x], 1)
-            else:
-                n = self.noise_cube[:, y, x]
+            n = deal_with_ranges(x, y, self.noise_cube)
 
             n = gaussian_filter(n, noise_smooth)
             sg = gaussian_filter(s, noise_smooth)
@@ -1022,34 +1010,26 @@ class Cube:
                 self.flux_model = np.zeros((len(spec.component_names),) + self.fit_status.shape)
                 self.flux_direct = np.zeros_like(self.eqw_model)
 
+            def results_to_attributes(cube, spectrum, solution, idx_0, idx_1):
+                solution[:, idx_0, idx_1] = spectrum.em_model
+                cube.fitcont[:, idx_0, idx_1] = spectrum.fitcont
+                cube.fitspec[:, idx_0, idx_1] = spectrum.fitspec
+                cube.resultspec[:, idx_0, idx_1] = spectrum.resultspec
+                cube.fitstellar[:, idx_0, idx_1] = spectrum.fitstellar
+                cube.fit_status[idx_0, idx_1] = spectrum.fit_status
+                cube.eqw_model[:, idx_0, idx_1] = spectrum.eqw_model
+                cube.eqw_direct[:, idx_0, idx_1] = spectrum.eqw_direct
+                cube.flux_model[:, idx_0, idx_1] = spectrum.flux_model
+                cube.flux_direct[:, idx_0, idx_1] = spectrum.flux_direct
+                cube.initial_guess[:, idx_0, idx_1] = spectrum.initial_guess
+                cube.fitbounds[:, idx_0, idx_1] = [
+                    k if k is not None else np.nan for k in np.array(spectrum.fitbounds).flatten()]
+
             if self.binned:
-                for l, m in vor[vor[:, 2] == bin_num, :2]:
-                    sol[:, l, m] = spec.em_model
-                    self.fitcont[:, l, m] = spec.fitcont
-                    self.fitspec[:, l, m] = spec.fitspec
-                    self.resultspec[:, l, m] = spec.resultspec
-                    self.fitstellar[:, l, m] = spec.fitstellar
-                    self.fit_status[l, m] = spec.fit_status
-                    self.eqw_model[:, l, m] = spec.eqw_model
-                    self.eqw_direct[:, l, m] = spec.eqw_direct
-                    self.flux_model[:, l, m] = spec.flux_model
-                    self.flux_direct[:, l, m] = spec.flux_direct
-                    self.initial_guess[:, l, m] = spec.initial_guess
-                    self.fitbounds[:, l, m] = [
-                        k if k is not None else np.nan for k in np.array(spec.fitbounds).flatten()]
+                for m, n in vor[vor[:, 2] == bin_num, :2]:
+                    results_to_attributes(self, spec, sol, m, n)
             else:
-                sol[:, i, j] = spec.em_model
-                self.fitcont[:, i, j] = spec.fitcont
-                self.fitspec[:, i, j] = spec.fitspec
-                self.fitstellar[:, i, j] = spec.fitstellar
-                self.resultspec[:, i, j] = spec.resultspec
-                self.fit_status[i, j] = spec.fit_status
-                self.eqw_model[:, i, j] = spec.eqw_model
-                self.eqw_direct[:, i, j] = spec.eqw_direct
-                self.flux_model[:, i, j] = spec.flux_model
-                self.flux_direct[:, i, j] = spec.flux_direct
-                self.initial_guess[:, i, j] = spec.initial_guess
-                self.fitbounds[:, i, j] = [k if k is not None else np.nan for k in np.array(spec.fitbounds).flatten()]
+                results_to_attributes(self, spec, sol, i, j)
 
         self.fit_wavelength = spec.fitwl
         self.fit_func = spec.fit_func
@@ -1448,11 +1428,15 @@ class Cube:
         projection = cubetools.wlprojection(
             arr=self.data, wl=self.wl, wl0=wl_center, fwhm=wl_width,
             filtertype='box')
-        projection_crop = projection[
-                          int(spatial_center[0] - spatial_width / 2):
-                          int(spatial_center[0] + spatial_width / 2) + 1,
-                          int(spatial_center[1] - spatial_width / 2):
-                          int(spatial_center[1] + spatial_width / 2) + 1]
+
+        def crop(center, width):
+            p = projection[
+                int(center[0] - width / 2): int(center[0] + width / 2) + 1,
+                int(center[1] - width / 2): int(center[1] + width / 2) + 1]
+            return p
+
+        projection_crop = crop(spatial_center, spatial_width)
+
         if center_type == 'peak_cen':
             idx = np.nanargmax(projection_crop, axis=None)
             coords = np.unravel_index(idx, projection_crop.shape)
@@ -1460,12 +1444,8 @@ class Cube:
                 spatial_center[0] - spatial_width / 2 + coords[0])
             spatial_center[1] = int(
                 spatial_center[1] - spatial_width / 2 + coords[1])
-            projection_crop = projection[
-                              int(spatial_center[0] - spatial_width / 2):
-                              int(spatial_center[0] + spatial_width / 2) + 1,
-                              int(spatial_center[1] - spatial_width / 2):
-                              int(spatial_center[1] + spatial_width / 2) + 1
-                              ]
+            projection_crop = crop(spatial_center, spatial_width)
+
             coords = center_of_mass(ma.masked_invalid(projection_crop))
         elif center_type == 'peak':
             idx = np.nanargmax(projection_crop, axis=None)

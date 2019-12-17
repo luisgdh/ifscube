@@ -255,7 +255,8 @@ def rebin(arr, xbin, ybin, combine='sum', mask=None):
     return new
 
 
-def aperture_spectrum(arr, x0=None, y0=None, radius=3, combine='sum'):
+def aperture_spectrum(arr, x0=None, y0=None, radius=3, combine='sum', multiply_by_area: bool = False,
+                      pixel_area: float = 1.0):
     y, x = np.indices(arr.shape[1:])
 
     if x0 is None:
@@ -270,7 +271,8 @@ def aperture_spectrum(arr, x0=None, y0=None, radius=3, combine='sum'):
     new_arr = ma.masked_invalid(arr)
     new_arr.mask |= (r > radius)
 
-    npix = np.sum(r < radius)
+    number_of_pixels = np.sum(r < radius)
+    total_area = number_of_pixels * pixel_area 
 
     if combine == 'sum':
         s = new_arr.sum(axis=(1, 2))
@@ -281,7 +283,10 @@ def aperture_spectrum(arr, x0=None, y0=None, radius=3, combine='sum'):
     else:
         raise Exception('Combination type not understood.')
 
-    return s, npix
+    if multiply_by_area:
+        s *= total_area 
+
+    return s
 
 
 # This is only here for backwards compatibility.

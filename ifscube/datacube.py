@@ -662,7 +662,7 @@ class Cube:
 
         return output_image
 
-    def aperture_spectrum(self, radius=1.0, x0=None, y0=None, flag_threshold=0.5):
+    def aperture_spectrum(self, radius=1.0, x0=None, y0=None, flag_threshold=0.5, **kwargs):
         """
         Makes an aperture spectrum out of the data cube.
 
@@ -688,12 +688,12 @@ class Cube:
         if y0 is None:
             y0 = int(self.spec_indices[:, 0].mean())
 
-        sci, npix_sci = cubetools.aperture_spectrum(self.data, x0=x0, y0=y0, radius=radius, combine='sum')
-        var, npix_var = cubetools.aperture_spectrum(self.variance, x0=x0, y0=y0, radius=radius, combine='sum')
+        sci = cubetools.aperture_spectrum(self.data, x0=x0, y0=y0, radius=radius, **kwargs)
+        var = cubetools.aperture_spectrum(self.variance, x0=x0, y0=y0, radius=radius, **kwargs)
         if np.all(self.variance == 1.0):
             var = self.variance[:, 0, 0]
-        ste, npix_ste = cubetools.aperture_spectrum(self.stellar, x0=x0, y0=y0, radius=radius, combine='sum')
-        fla, npix_fla = cubetools.aperture_spectrum((self.flags.astype('bool')).astype('float64'), x0=x0, y0=y0,
+        ste = cubetools.aperture_spectrum(self.stellar, x0=x0, y0=y0, radius=radius, **kwargs)
+        fla = cubetools.aperture_spectrum((self.flags.astype('bool')).astype('float64'), x0=x0, y0=y0,
                                                     radius=radius, combine='mean')
 
         # NOTE: This only makes sense when the flags are only ones

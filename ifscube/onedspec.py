@@ -9,6 +9,8 @@ from astropy.io import fits
 from scipy.integrate import trapz
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
+from scipy.optimize import basinhopping
+
 
 from . import elprofile as lprof
 from . import stats, spectools
@@ -443,7 +445,7 @@ class Spectrum:
     def linefit(self, p0, feature_wl, function='gaussian', fitting_window=None, write_fits=False, out_image=None,
                 variance=None, constraints=None, bounds=None, instrument_dispersion=1.0, min_method='SLSQP',
                 minopts=None, copts=None, weights=None, verbose=False, fit_continuum=False, component_names=None,
-                overwrite=False, eqw_opts=None, trivial=False, suffix=None, optimize_fit=False,
+                overwrite=False, eqw_opts=None, trivial=False, suffix=None, optimize_fit=False, search_global=False,
                 optimization_window=10.0, guess_parameters=False, test_jacobian=False, good_minfraction=.8,
                 fixed: bool = False, fixed_components: str = None, continuum_line_weight: float = 0.0):
         """
@@ -748,8 +750,17 @@ class Spectrum:
             minopts = {'eps': 1e-3}
         if constraints is None:
             constraints = []
-
-        r = minimize(res, x0=p0, method=min_method, bounds=sbounds, constraints=constraints, options=minopts)
+            
+        if not search_global:
+            r = minimize(res, x0=p0, method=min_method, bounds=sbounds, constraints=constraints, options=minopts)
+            
+        if search_global:
+            r = basinhopping(res, x0=p0,
+                             minimizer_kwargs={"method":min_method,
+                                               "bounds":sbounds,
+                                               "constraints":constraints,
+                                               "options":minopts})
+            r = r.lowest_optimization_result
 
         # Perform the fit a second time with the RMS as the flux
         # initial guess. This was added after a number of fits returned
